@@ -17,6 +17,13 @@ interface ItemQty {
   qty: number;
 }
 
+interface InventarioItem {
+  id: number;
+  nombre: string;
+  unidad: string;
+  stock: number;
+}
+
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 export default function SolicitarPage() {
@@ -33,6 +40,7 @@ export default function SolicitarPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [inventario, setInventario] = useState<InventarioItem[]>([]);
 
   useEffect(() => {
     const raw = localStorage.getItem('session');
@@ -53,11 +61,14 @@ export default function SolicitarPage() {
       setIsMonday(day === 1);
       setTodayName(DAY_NAMES[day]);
 
-      // Fetch week count
-      fetch(`/api/pedidos?staff_name=${encodeURIComponent(parsed.name)}&current_week=1`)
-        .then((r) => r.json())
-        .then((data) => {
-          setWeekCount(data.count ?? 0);
+      // Fetch week count and inventario in parallel
+      Promise.all([
+        fetch(`/api/pedidos?staff_name=${encodeURIComponent(parsed.name)}&current_week=1`).then((r) => r.json()),
+        fetch('/api/inventario').then((r) => r.json()),
+      ])
+        .then(([countData, invData]) => {
+          setWeekCount(countData.count ?? 0);
+          if (Array.isArray(invData)) setInventario(invData);
           setLoading(false);
         })
         .catch(() => setLoading(false));
@@ -216,7 +227,32 @@ export default function SolicitarPage() {
         <form onSubmit={handleSubmit}>
           {/* Items grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            {INSUMOS.map((insumo) => (
+            {INSUMOS.map((insumo) => {
+              const invItem = inventario.find((i) => i.nombre === insumo.name);
+              const stock = invItem?.stock ?? null;
+              let stockBadge: React.ReactNode = null;
+              if (stock !== null) {
+                if (stock === 0) {
+                  stockBadge = (
+                    <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                      Sin stock
+                    </span>
+                  );
+                } else if (stock <= 5) {
+                  stockBadge = (
+                    <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                      Stock bajo: {stock}
+                    </span>
+                  );
+                } else {
+                  stockBadge = (
+                    <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                      Stock: {stock}
+                    </span>
+                  );
+                }
+              }
+              return (
               <div
                 key={insumo.id}
                 className="bg-white rounded-2xl shadow-md p-4 flex flex-col gap-3"
@@ -224,6 +260,7 @@ export default function SolicitarPage() {
                 <div>
                   <p className="font-semibold text-gray-800 text-sm leading-tight">{insumo.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">Unidad: {insumo.unit}</p>
+                  {stockBadge && <div className="mt-1">{stockBadge}</div>}
                 </div>
                 <div className="flex items-center gap-2">
                   <button

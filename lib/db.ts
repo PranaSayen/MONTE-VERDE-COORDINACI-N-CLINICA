@@ -1,4 +1,5 @@
 import { neon, NeonQueryFunction } from '@neondatabase/serverless';
+import { INSUMOS } from '@/lib/constants';
 
 let _sql: NeonQueryFunction<false, false> | null = null;
 
@@ -27,6 +28,27 @@ export async function initDb() {
       year INTEGER NOT NULL
     )
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS inventario (
+      id INTEGER PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      unidad TEXT NOT NULL,
+      stock INTEGER NOT NULL DEFAULT 0
+    )
+  `;
+
+  const count = await sql`SELECT COUNT(*) as count FROM inventario`;
+  if (Number(count[0].count) === 0) {
+    for (let i = 0; i < INSUMOS.length; i++) {
+      const insumo = INSUMOS[i];
+      await sql`
+        INSERT INTO inventario (id, nombre, unidad, stock)
+        VALUES (${i + 1}, ${insumo.name}, ${insumo.unit}, 20)
+        ON CONFLICT (id) DO NOTHING
+      `;
+    }
+  }
 }
 
 export function getISOWeek(date: Date): { week: number; year: number } {

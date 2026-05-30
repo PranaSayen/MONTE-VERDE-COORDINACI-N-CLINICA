@@ -85,5 +85,20 @@ export async function POST(req: NextRequest) {
     RETURNING *
   `;
 
-  return Response.json(rows[0], { status: 201 });
+  // Check for stock alerts on requested items
+  const requestedItems = items.filter((i: { qty: number }) => i.qty > 0);
+  const stockAlerts: string[] = [];
+  for (const item of requestedItems) {
+    const inv = await sql`SELECT stock, nombre FROM inventario WHERE nombre = ${item.name}`;
+    if (inv.length > 0 && Number(inv[0].stock) === 0) {
+      stockAlerts.push(item.name);
+    }
+  }
+
+  const responseBody: Record<string, unknown> = { ...rows[0] };
+  if (stockAlerts.length > 0) {
+    responseBody.stock_alerts = stockAlerts;
+  }
+
+  return Response.json(responseBody, { status: 201 });
 }

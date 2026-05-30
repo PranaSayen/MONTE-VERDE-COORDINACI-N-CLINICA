@@ -22,15 +22,46 @@ interface ParsedItem {
   qty: number;
 }
 
+interface InventarioItem {
+  id: number;
+  nombre: string;
+  unidad: string;
+  stock: number;
+}
+
 export default function BodegaPage() {
   const router = useRouter();
   const [pending, setPending] = useState<Pedido[]>([]);
   const [historial, setHistorial] = useState<Pedido[]>([]);
+  const [inventario, setInventario] = useState<InventarioItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [observation, setObservation] = useState('');
   const [obsError, setObsError] = useState('');
   const [processing, setProcessing] = useState<number | null>(null);
+  const [stockInputs, setStockInputs] = useState<Record<number, string>>({});
+  const [stockUpdating, setStockUpdating] = useState<number | null>(null);
+
+  const fetchInventario = useCallback(async () => {
+    try {
+      const res = await fetch('/api/inventario');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setInventario(data);
+        setStockInputs((prev) => {
+          const next: Record<number, string> = { ...prev };
+          for (const item of data as InventarioItem[]) {
+            if (!(item.id in next)) {
+              next[item.id] = String(item.stock);
+            }
+          }
+          return next;
+        });
+      }
+    } catch {
+      // silent fail
+    }
+  }, []);
 
   const fetchPedidos = useCallback(async () => {
     try {
@@ -67,9 +98,13 @@ export default function BodegaPage() {
       return;
     }
     fetchPedidos();
-    const interval = setInterval(fetchPedidos, 30000);
+    fetchInventario();
+    const interval = setInterval(() => {
+      fetchPedidos();
+      fetchInventario();
+    }, 30000);
     return () => clearInterval(interval);
-  }, [router, fetchPedidos]);
+  }, [router, fetchPedidos, fetchInventario]);
 
   const handleApprove = async (id: number) => {
     setProcessing(id);
@@ -80,6 +115,7 @@ export default function BodegaPage() {
         body: JSON.stringify({ status: 'aprobado' }),
       });
       await fetchPedidos();
+      await fetchInventario();
     } finally {
       setProcessing(null);
     }
@@ -111,6 +147,22 @@ export default function BodegaPage() {
     router.push('/');
   };
 
+  const handleStockUpdate = async (item: InventarioItem) => {
+    const newStock = parseInt(stockInputs[item.id] ?? String(item.stock));
+    if (isNaN(newStock) || newStock < 0) return;
+    setStockUpdating(item.id);
+    try {
+      await fetch(`/api/inventario/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: newStock }),
+      });
+      await fetchInventario();
+    } finally {
+      setStockUpdating(null);
+    }
+  };
+
   const parseItems = (itemsJson: string): ParsedItem[] => {
     try {
       return JSON.parse(itemsJson);
@@ -128,6 +180,8 @@ export default function BodegaPage() {
       minute: '2-digit',
     });
   };
+
+  const outOfStock = inventario.filter((i) => i.stock === 0);
 
   if (loading) {
     return (
@@ -156,6 +210,24 @@ export default function BodegaPage() {
       </div>
 
       <div className="max-w-2xl mx-auto">
+        {/* Stock Alert Banner */}
+        {outOfStock.length > 0 && (
+          <div className="bg-red-50 border-2 border-red-500 rounded-xl p-4 mb-6">
+            <p className="font-bold text-red-700 text-base mb-2">
+              ⚠️ PRODUCTOS SIN STOCK — REABASTECER CON PRIORIDAD
+            </p>
+            <p className="text-red-600 text-sm font-semibold mb-2">Reabastecer antes de aprobar</p>
+            <ul className="space-y-1">
+              {outOfStock.map((item) => (
+                <li key={item.id} className="text-red-700 text-sm flex items-center gap-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
+                  {item.nombre}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Pending count badge */}
         <div className="flex items-center gap-3 mb-6">
           <h2 className="text-2xl font-bold text-emerald-800">Pedidos Pendientes</h2>
@@ -287,7 +359,7 @@ export default function BodegaPage() {
             No hay pedidos procesados aún.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 mb-10">
             {historial.map((pedido) => {
               const items = parseItems(pedido.items);
               const isApproved = pedido.status === 'aprobado';
@@ -325,6 +397,54 @@ export default function BodegaPage() {
                       {pedido.observation}
                     </p>
                   )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Gestionar Stock */}
+        <h2 className="text-xl font-bold text-emerald-800 mb-4">Gestionar Stock</h2>
+        {inventario.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-md p-6 text-center text-gray-500">
+            Cargando inventario...
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+            {inventario.map((item) => {
+              const isZero = item.stock === 0;
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-2xl shadow-md p-4 flex flex-col gap-3 ${
+                    isZero ? 'bg-red-50' : 'bg-emerald-50'
+                  }`}
+                >
+                  <div>
+                    <p className="font-semibold text-gray-800 text-sm leading-tight">{item.nombre}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Unidad: {item.unidad}</p>
+                    <p className={`text-sm font-bold mt-1 ${isZero ? 'text-red-600' : 'text-emerald-700'}`}>
+                      Stock actual: {item.stock}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      value={stockInputs[item.id] ?? String(item.stock)}
+                      onChange={(e) =>
+                        setStockInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
+                      }
+                      className="flex-1 border border-gray-300 rounded-xl text-center py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <button
+                      onClick={() => handleStockUpdate(item)}
+                      disabled={stockUpdating === item.id}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white text-sm font-semibold px-3 py-2 rounded-xl transition-colors whitespace-nowrap"
+                    >
+                      {stockUpdating === item.id ? '...' : 'Actualizar'}
+                    </button>
+                  </div>
                 </div>
               );
             })}
