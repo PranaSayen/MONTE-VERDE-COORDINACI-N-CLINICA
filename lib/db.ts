@@ -35,8 +35,8 @@ export async function initDb() {
   await sql`
     CREATE TABLE IF NOT EXISTS inventario (
       id SERIAL PRIMARY KEY,
-      id_interno TEXT NOT NULL UNIQUE,
-      categoria TEXT NOT NULL,
+      id_interno TEXT UNIQUE,
+      categoria TEXT,
       nombre TEXT NOT NULL,
       descripcion TEXT,
       marca TEXT,
@@ -47,8 +47,24 @@ export async function initDb() {
     )
   `;
 
-  const count = await sql`SELECT COUNT(*) as count FROM inventario`;
-  if (Number(count[0].count) === 0) {
+  // Migrate old schema: add missing columns if they don't exist
+  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS id_interno TEXT`;
+  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS categoria TEXT`;
+  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS descripcion TEXT`;
+  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS marca TEXT`;
+  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS presentacion TEXT`;
+  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS ubicacion TEXT DEFAULT 'Bodega'`;
+
+  // Add unique constraint on id_interno if missing (ignore error if already exists)
+  try {
+    await sql`ALTER TABLE inventario ADD CONSTRAINT inventario_id_interno_key UNIQUE (id_interno)`;
+  } catch { /* constraint already exists */ }
+
+  // Seed if id_interno is not populated (old data or empty table)
+  const check = await sql`SELECT COUNT(*) as count FROM inventario WHERE id_interno IS NOT NULL`;
+  if (Number(check[0].count) === 0) {
+    // Clear old data and re-seed with full catalog
+    await sql`DELETE FROM inventario`;
     // Bulk insert all products in a single query using unnest
     const ids         = PRODUCTOS_SEED.map(p => p.id_interno);
     const categorias  = PRODUCTOS_SEED.map(p => p.categoria);
