@@ -287,7 +287,8 @@ export default function SolicitarPage() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Reason field (mandatory on second request) */}
