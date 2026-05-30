@@ -1,4 +1,5 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { getSql, initDb, getISOWeek } from '@/lib/db';
