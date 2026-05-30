@@ -1,0 +1,314 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { INSUMOS } from '@/lib/constants';
+import Link from 'next/link';
+
+interface Session {
+  role: string;
+  name: string;
+}
+
+interface ItemQty {
+  id: string;
+  name: string;
+  unit: string;
+  qty: number;
+}
+
+const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+export default function SolicitarPage() {
+  const router = useRouter();
+  const [session, setSession] = useState<Session | null>(null);
+  const [isMonday, setIsMonday] = useState(true);
+  const [todayName, setTodayName] = useState('');
+  const [weekCount, setWeekCount] = useState(0);
+  const [quantities, setQuantities] = useState<Record<string, number>>(
+    Object.fromEntries(INSUMOS.map((i) => [i.id, 0]))
+  );
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const raw = localStorage.getItem('session');
+    if (!raw) {
+      router.replace('/');
+      return;
+    }
+    try {
+      const parsed: Session = JSON.parse(raw);
+      if (parsed.role !== 'staff') {
+        router.replace('/');
+        return;
+      }
+      setSession(parsed);
+
+      const today = new Date();
+      const day = today.getDay();
+      setIsMonday(day === 1);
+      setTodayName(DAY_NAMES[day]);
+
+      // Fetch week count
+      fetch(`/api/pedidos?staff_name=${encodeURIComponent(parsed.name)}&current_week=1`)
+        .then((r) => r.json())
+        .then((data) => {
+          setWeekCount(data.count ?? 0);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    } catch {
+      localStorage.removeItem('session');
+      router.replace('/');
+    }
+  }, [router]);
+
+  const handleQtyChange = (id: string, value: number) => {
+    setQuantities((prev) => ({ ...prev, [id]: Math.max(0, Math.min(99, value)) }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!isMonday) {
+      setError('Solo se pueden hacer pedidos los lunes.');
+      return;
+    }
+
+    const items: ItemQty[] = INSUMOS.filter((i) => quantities[i.id] > 0).map((i) => ({
+      id: i.id,
+      name: i.name,
+      unit: i.unit,
+      qty: quantities[i.id],
+    }));
+
+    if (items.length === 0) {
+      setError('Debes seleccionar al menos un insumo con cantidad mayor a 0.');
+      return;
+    }
+
+    if (weekCount >= 1 && !reason.trim()) {
+      setError('Debes ingresar una razón para el segundo pedido de la semana.');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const res = await fetch('/api/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_name: session?.name,
+          items,
+          reason: reason.trim() || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? 'Error al enviar el pedido.');
+        setSubmitting(false);
+        return;
+      }
+
+      setSuccessMsg('¡Pedido enviado correctamente! Bodega lo revisará pronto.');
+      setQuantities(Object.fromEntries(INSUMOS.map((i) => [i.id, 0])));
+      setReason('');
+      setWeekCount((c) => c + 1);
+    } catch {
+      setError('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('session');
+    router.push('/');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-emerald-600 text-lg">Cargando...</div>
+      </div>
+    );
+  }
+
+  if (!isMonday) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-8 text-center">
+          <div className="text-6xl mb-4">📅</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-3">Solo los Lunes</h2>
+          <p className="text-gray-600 mb-2">
+            Los pedidos de insumos solo se pueden realizar los <strong>lunes</strong>.
+          </p>
+          <p className="text-gray-500 text-sm mb-6">
+            Hoy es <strong>{todayName}</strong>. Vuelve el próximo lunes.
+          </p>
+          <div className="space-y-3">
+            <Link
+              href="/estado"
+              className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl py-3 min-h-12 text-center transition-colors"
+            >
+              Ver mis pedidos
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="w-full border border-gray-300 text-gray-600 hover:bg-gray-50 font-semibold rounded-xl py-3 min-h-12 transition-colors"
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-4">
+      {/* Header */}
+      <div className="max-w-2xl mx-auto mb-6">
+        <div className="bg-emerald-600 rounded-2xl p-4 text-white flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold">Clínica Monte Verde</h1>
+            <p className="text-emerald-100 text-sm">Hola, {session?.name}</p>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              href="/estado"
+              className="bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-medium px-3 py-2 rounded-xl transition-colors"
+            >
+              Mis pedidos
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="bg-emerald-800 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-xl transition-colors"
+            >
+              Salir
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto">
+        <h2 className="text-2xl font-bold text-emerald-800 mb-2">Solicitar Insumos</h2>
+        <p className="text-gray-500 text-sm mb-6">
+          Selecciona los insumos que necesitas y las cantidades.
+        </p>
+
+        {weekCount >= 1 && (
+          <div className="bg-yellow-50 border border-yellow-300 rounded-2xl p-4 mb-6">
+            <p className="text-yellow-800 font-medium text-sm">
+              ⚠️ Ya realizaste {weekCount} pedido{weekCount > 1 ? 's' : ''} esta semana. Este será
+              un pedido adicional y requiere una razón obligatoria.
+            </p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          {/* Items grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            {INSUMOS.map((insumo) => (
+              <div
+                key={insumo.id}
+                className="bg-white rounded-2xl shadow-md p-4 flex flex-col gap-3"
+              >
+                <div>
+                  <p className="font-semibold text-gray-800 text-sm leading-tight">{insumo.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Unidad: {insumo.unit}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleQtyChange(insumo.id, quantities[insumo.id] - 1)}
+                    className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-xl text-xl font-bold text-gray-600 flex items-center justify-center transition-colors"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min={0}
+                    max={99}
+                    value={quantities[insumo.id]}
+                    onChange={(e) => handleQtyChange(insumo.id, parseInt(e.target.value) || 0)}
+                    className="flex-1 border border-gray-300 rounded-xl text-center py-2 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleQtyChange(insumo.id, quantities[insumo.id] + 1)}
+                    className="w-10 h-10 bg-emerald-100 hover:bg-emerald-200 rounded-xl text-xl font-bold text-emerald-700 flex items-center justify-center transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Reason field (mandatory on second request) */}
+          {weekCount >= 1 && (
+            <div className="bg-white rounded-2xl shadow-md p-4 mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2" htmlFor="reason">
+                Razón del pedido adicional <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                placeholder="Explica por qué necesitas un pedido adicional esta semana..."
+                required
+              />
+            </div>
+          )}
+
+          {/* Optional reason for first request */}
+          {weekCount === 0 && (
+            <div className="bg-white rounded-2xl shadow-md p-4 mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2" htmlFor="reason">
+                Razón o comentario (opcional)
+              </label>
+              <textarea
+                id="reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                placeholder="Comentario adicional (opcional)..."
+              />
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm mb-4">
+              {error}
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-xl px-4 py-3 text-sm mb-4 font-medium">
+              {successMsg}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl py-4 min-h-12 text-lg transition-colors"
+          >
+            {submitting ? 'Enviando...' : 'Enviar Pedido'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
