@@ -32,11 +32,22 @@ export async function initDb() {
   await sql`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS missing_items TEXT`;
   await sql`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS day_reason TEXT`;
 
+  // Check if inventario has the correct schema (id_interno column)
+  const cols = await sql`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'inventario' AND column_name = 'id_interno'
+  `;
+
+  if (cols.length === 0) {
+    // Old schema — drop and recreate clean
+    await sql`DROP TABLE IF EXISTS inventario`;
+  }
+
   await sql`
     CREATE TABLE IF NOT EXISTS inventario (
       id SERIAL PRIMARY KEY,
-      id_interno TEXT UNIQUE,
-      categoria TEXT,
+      id_interno TEXT NOT NULL UNIQUE,
+      categoria TEXT NOT NULL,
       nombre TEXT NOT NULL,
       descripcion TEXT,
       marca TEXT,
@@ -47,25 +58,9 @@ export async function initDb() {
     )
   `;
 
-  // Migrate old schema: add missing columns if they don't exist
-  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS id_interno TEXT`;
-  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS categoria TEXT`;
-  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS descripcion TEXT`;
-  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS marca TEXT`;
-  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS presentacion TEXT`;
-  await sql`ALTER TABLE inventario ADD COLUMN IF NOT EXISTS ubicacion TEXT DEFAULT 'Bodega'`;
-
-  // Add unique constraint on id_interno if missing (ignore error if already exists)
-  try {
-    await sql`ALTER TABLE inventario ADD CONSTRAINT inventario_id_interno_key UNIQUE (id_interno)`;
-  } catch { /* constraint already exists */ }
-
-  // Seed if id_interno is not populated (old data or empty table)
-  const check = await sql`SELECT COUNT(*) as count FROM inventario WHERE id_interno IS NOT NULL`;
-  if (Number(check[0].count) === 0) {
-    // Clear old data and re-seed with full catalog
-    await sql`DELETE FROM inventario`;
-    // Bulk insert all products in a single query using unnest
+  // Seed only if empty
+  const count = await sql`SELECT COUNT(*) as count FROM inventario`;
+  if (Number(count[0].count) === 0) {
     const ids         = PRODUCTOS_SEED.map(p => p.id_interno);
     const categorias  = PRODUCTOS_SEED.map(p => p.categoria);
     const nombres     = PRODUCTOS_SEED.map(p => p.nombre);
@@ -79,8 +74,7 @@ export async function initDb() {
     await sql(
       `INSERT INTO inventario (id_interno, categoria, nombre, descripcion, marca, presentacion, unidad, stock, ubicacion)
        SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::text[]), unnest($4::text[]),
-              unnest($5::text[]), unnest($6::text[]), unnest($7::text[]), unnest($8::int[]), unnest($9::text[])
-       ON CONFLICT (id_interno) DO NOTHING`,
+              unnest($5::text[]), unnest($6::text[]), unnest($7::text[]), unnest($8::int[]), unnest($9::text[])`,
       [ids, categorias, nombres, descs, marcas, presens, unidades, stocks, ubicaciones]
     );
   }
