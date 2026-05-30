@@ -16,9 +16,10 @@ interface Pedido {
   staff_name: string;
   items: string;
   reason: string | null;
-  status: 'pendiente' | 'aprobado' | 'rechazado';
+  status: 'pendiente' | 'aprobado' | 'rechazado' | 'en_proceso';
   observation: string | null;
   created_at: string;
+  missing_items: string | null;
 }
 
 export default function EstadoPage() {
@@ -95,11 +96,21 @@ export default function EstadoPage() {
           </div>
         )}
 
-        {pedidos.map((p) => (
+        {pedidos.map((p) => {
+          let missingItems: string[] = [];
+          try { missingItems = p.missing_items ? JSON.parse(p.missing_items) : []; } catch { missingItems = []; }
+
+          return (
           <div key={p.id} className="bg-white rounded-2xl shadow-md overflow-hidden">
             {p.status === 'aprobado' && (
               <div className="bg-emerald-500 text-white text-center py-3 px-4 animate-pulse">
                 <p className="text-lg font-bold tracking-wide">✓ LISTO PARA RETIRAR</p>
+              </div>
+            )}
+
+            {p.status === 'en_proceso' && (
+              <div className="bg-amber-400 text-amber-900 text-center py-2 px-4">
+                <p className="text-sm font-bold">⏳ En proceso — esperando insumos</p>
               </div>
             )}
 
@@ -111,10 +122,13 @@ export default function EstadoPage() {
                     ? 'bg-emerald-100 text-emerald-800'
                     : p.status === 'rechazado'
                     ? 'bg-red-100 text-red-800'
+                    : p.status === 'en_proceso'
+                    ? 'bg-amber-100 text-amber-800'
                     : 'bg-yellow-100 text-yellow-800'
                 }`}>
                   {p.status === 'aprobado' ? 'Aprobado'
                     : p.status === 'rechazado' ? 'Rechazado'
+                    : p.status === 'en_proceso' ? 'En proceso'
                     : 'En revisión'}
                 </span>
               </div>
@@ -134,6 +148,12 @@ export default function EstadoPage() {
                 </div>
               )}
 
+              {p.status === 'en_proceso' && missingItems.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm text-amber-800">
+                  <span className="font-semibold">Falta: </span>{missingItems.join(', ')}
+                </div>
+              )}
+
               {p.status === 'rechazado' && p.observation && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-sm text-red-800">
                   <span className="font-semibold">Observación bodega: </span>{p.observation}
@@ -141,7 +161,8 @@ export default function EstadoPage() {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -148,6 +148,20 @@ export default function BodegaPage() {
     }
   };
 
+  const handleComplete = async (id: number) => {
+    setProcessing(id);
+    try {
+      await fetch(`/api/pedidos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completado' }),
+      });
+      await fetchPedidos();
+    } finally {
+      setProcessing(null);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('session');
     router.push('/');
@@ -234,6 +248,74 @@ export default function BodegaPage() {
           </div>
         )}
 
+        {/* En Proceso section */}
+        {enProceso.length > 0 && (
+          <>
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-2xl font-bold text-amber-700">En Proceso</h2>
+              <span className="bg-amber-400 text-amber-900 font-bold text-sm px-3 py-1 rounded-full">
+                {enProceso.length}
+              </span>
+            </div>
+            <div className="space-y-4 mb-8">
+              {enProceso.map((pedido) => {
+                const items = parseItems(pedido.items);
+                let missingItems: string[] = [];
+                try {
+                  missingItems = pedido.missing_items ? JSON.parse(pedido.missing_items) : [];
+                } catch { missingItems = []; }
+
+                return (
+                  <div key={pedido.id} className="bg-amber-50 border border-amber-400 rounded-2xl shadow-md p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-bold text-gray-800 text-lg">{pedido.staff_name}</p>
+                        <p className="text-gray-500 text-xs mt-0.5">{formatDate(pedido.created_at)}</p>
+                      </div>
+                      <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-1 rounded-full">
+                        En proceso
+                      </span>
+                    </div>
+
+                    {/* Items list */}
+                    <ul className="space-y-1 mb-3">
+                      {items.map((item) => (
+                        <li key={item.id} className="flex items-center gap-2 text-sm text-gray-700">
+                          <span className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0" />
+                          <span className="font-medium">{item.qty}</span>
+                          <span>{item.unit}{item.qty > 1 ? 's' : ''}</span>
+                          <span className="text-gray-500">de {item.name}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {missingItems.length > 0 && (
+                      <div className="bg-amber-100 border border-amber-300 rounded-xl px-3 py-2 mb-3 text-sm text-amber-900">
+                        <span className="font-bold">Falta: </span>
+                        {missingItems.join(', ')}
+                      </div>
+                    )}
+
+                    {pedido.day_reason && (
+                      <p className="text-xs text-gray-500 mb-3">
+                        📅 Pedido fuera de lunes: {pedido.day_reason}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={() => handleComplete(pedido.id)}
+                      disabled={processing === pedido.id}
+                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white font-semibold rounded-xl py-2.5 min-h-12 transition-colors"
+                    >
+                      {processing === pedido.id ? 'Procesando...' : '✓ Marcar como Completado'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         {/* Pending count badge */}
         <div className="flex items-center gap-3 mb-6">
           <h2 className="text-2xl font-bold text-emerald-800">Pedidos Pendientes</h2>
@@ -279,10 +361,16 @@ export default function BodegaPage() {
                   </ul>
 
                   {pedido.reason && (
-                    <div className="bg-gray-50 rounded-xl px-3 py-2 mb-4 text-sm text-gray-600">
+                    <div className="bg-gray-50 rounded-xl px-3 py-2 mb-3 text-sm text-gray-600">
                       <span className="font-semibold text-gray-700">Razón: </span>
                       {pedido.reason}
                     </div>
+                  )}
+
+                  {pedido.day_reason && (
+                    <p className="text-xs text-gray-500 mb-3">
+                      📅 Pedido fuera de lunes: {pedido.day_reason}
+                    </p>
                   )}
 
                   {/* Action buttons */}
