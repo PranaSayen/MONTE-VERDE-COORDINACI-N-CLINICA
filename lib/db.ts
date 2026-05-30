@@ -49,23 +49,24 @@ export async function initDb() {
 
   const count = await sql`SELECT COUNT(*) as count FROM inventario`;
   if (Number(count[0].count) === 0) {
-    for (const producto of PRODUCTOS_SEED) {
-      await sql`
-        INSERT INTO inventario (id_interno, categoria, nombre, descripcion, marca, presentacion, unidad, stock, ubicacion)
-        VALUES (
-          ${producto.id_interno},
-          ${producto.categoria},
-          ${producto.nombre},
-          ${producto.descripcion},
-          ${producto.marca},
-          ${producto.presentacion},
-          ${producto.unidad},
-          ${producto.stock},
-          ${producto.ubicacion}
-        )
-        ON CONFLICT (id_interno) DO NOTHING
-      `;
-    }
+    // Bulk insert all products in a single query using unnest
+    const ids         = PRODUCTOS_SEED.map(p => p.id_interno);
+    const categorias  = PRODUCTOS_SEED.map(p => p.categoria);
+    const nombres     = PRODUCTOS_SEED.map(p => p.nombre);
+    const descs       = PRODUCTOS_SEED.map(p => p.descripcion);
+    const marcas      = PRODUCTOS_SEED.map(p => p.marca);
+    const presens     = PRODUCTOS_SEED.map(p => p.presentacion);
+    const unidades    = PRODUCTOS_SEED.map(p => p.unidad);
+    const stocks      = PRODUCTOS_SEED.map(p => p.stock);
+    const ubicaciones = PRODUCTOS_SEED.map(p => p.ubicacion);
+
+    await sql(
+      `INSERT INTO inventario (id_interno, categoria, nombre, descripcion, marca, presentacion, unidad, stock, ubicacion)
+       SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::text[]), unnest($4::text[]),
+              unnest($5::text[]), unnest($6::text[]), unnest($7::text[]), unnest($8::int[]), unnest($9::text[])
+       ON CONFLICT (id_interno) DO NOTHING`,
+      [ids, categorias, nombres, descs, marcas, presens, unidades, stocks, ubicaciones]
+    );
   }
 }
 
