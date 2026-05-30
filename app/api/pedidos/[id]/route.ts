@@ -1,13 +1,13 @@
 export const runtime = 'nodejs';
 
 import { NextRequest } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, initDb } from '@/lib/db';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const db = getDb();
+  await initDb();
   const body = await req.json();
   const { status, observation } = body;
 
@@ -22,14 +22,18 @@ export async function PATCH(
     );
   }
 
-  const result = db.prepare(
-    'UPDATE pedidos SET status = ?, observation = ? WHERE id = ?'
-  ).run(status, observation?.trim() || null, params.id);
+  const id = Number(params.id);
+  const obsVal = observation?.trim() || null;
 
-  if (result.changes === 0) {
+  const rows = await sql`
+    UPDATE pedidos SET status = ${status}, observation = ${obsVal}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+
+  if (rows.length === 0) {
     return Response.json({ error: 'Pedido no encontrado' }, { status: 404 });
   }
 
-  const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(params.id);
-  return Response.json(pedido);
+  return Response.json(rows[0]);
 }

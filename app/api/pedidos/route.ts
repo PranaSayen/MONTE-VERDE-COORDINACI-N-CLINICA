@@ -1,45 +1,48 @@
 export const runtime = 'nodejs';
 
 import { NextRequest } from 'next/server';
-import { getDb, getISOWeek } from '@/lib/db';
+import { sql, initDb, getISOWeek } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
-  const db = getDb();
+  await initDb();
   const { searchParams } = new URL(req.url);
   const staffName = searchParams.get('staff_name');
   const status = searchParams.get('status');
   const currentWeek = searchParams.get('current_week');
 
   if (status === 'pendiente') {
-    const rows = db.prepare(
-      "SELECT * FROM pedidos WHERE status = 'pendiente' ORDER BY created_at ASC"
-    ).all();
+    const rows = await sql`
+      SELECT * FROM pedidos WHERE status = 'pendiente' ORDER BY created_at ASC
+    `;
     return Response.json(rows);
   }
 
   if (staffName && currentWeek === '1') {
     const { week, year } = getISOWeek(new Date());
-    const row = db.prepare(
-      'SELECT COUNT(*) as count FROM pedidos WHERE staff_name = ? AND week_number = ? AND year = ?'
-    ).get(staffName, week, year) as { count: number };
-    return Response.json({ count: row.count });
+    const rows = await sql`
+      SELECT COUNT(*) as count FROM pedidos
+      WHERE staff_name = ${staffName} AND week_number = ${week} AND year = ${year}
+    `;
+    return Response.json({ count: Number(rows[0].count) });
   }
 
   if (staffName) {
-    const rows = db.prepare(
-      'SELECT * FROM pedidos WHERE staff_name = ? ORDER BY created_at DESC LIMIT 20'
-    ).all(staffName);
+    const rows = await sql`
+      SELECT * FROM pedidos WHERE staff_name = ${staffName}
+      ORDER BY created_at DESC LIMIT 20
+    `;
     return Response.json(rows);
   }
 
-  // Bodega historial
-  const rows = db.prepare(
-    "SELECT * FROM pedidos WHERE status != 'pendiente' ORDER BY created_at DESC LIMIT 20"
-  ).all();
+  const rows = await sql`
+    SELECT * FROM pedidos WHERE status != 'pendiente'
+    ORDER BY created_at DESC LIMIT 20
+  `;
   return Response.json(rows);
 }
 
 export async function POST(req: NextRequest) {
+  await initDb();
   const body = await req.json();
   const { staff_name, items, reason } = body;
 
@@ -52,31 +55,33 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Debes solicitar al menos un insumo.' }, { status: 400 });
   }
 
-  // Monday check (server-side)
   const today = new Date();
   if (today.getDay() !== 1) {
     return Response.json({ error: 'Los pedidos solo se pueden hacer los lunes.' }, { status: 400 });
   }
 
-  const db = getDb();
   const { week, year } = getISOWeek(today);
 
-  // Check second request
-  const existing = db.prepare(
-    'SELECT COUNT(*) as count FROM pedidos WHERE staff_name = ? AND week_number = ? AND year = ?'
-  ).get(staff_name, week, year) as { count: number };
+  const existing = await sql`
+    SELECT COUNT(*) as count FROM pedidos
+    WHERE staff_name = ${staff_name} AND week_number = ${week} AND year = ${year}
+  `;
 
-  if (existing.count >= 1 && !reason?.trim()) {
+  if (Number(existing[0].count) >= 1 && !reason?.trim()) {
     return Response.json(
       { error: 'Este es tu segundo pedido de la semana. Debes indicar una razón.' },
       { status: 400 }
     );
   }
 
-  const result = db.prepare(
-    'INSERT INTO pedidos (staff_name, items, reason, week_number, year) VALUES (?, ?, ?, ?, ?)'
-  ).run(staff_name, JSON.stringify(items), reason?.trim() || null, week, year);
+  const itemsJson = JSON.stringify(items);
+  const reasonVal = reason?.trim() || null;
 
-  const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(result.lastInsertRowid);
-  return Response.json(pedido, { status: 201 });
+  const rows = await sql`
+    INSERT INTO pedidos (staff_name, items, reason, week_number, year)
+    VALUES (${staff_name}, ${itemsJson}, ${reasonVal}, ${week}, ${year})
+    RETURNING *
+  `;
+
+  return Response.json(rows[0], { status: 201 });
 }
