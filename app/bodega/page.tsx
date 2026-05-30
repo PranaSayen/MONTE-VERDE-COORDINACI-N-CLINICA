@@ -13,6 +13,8 @@ interface Pedido {
   created_at: string;
   week_number: number;
   year: number;
+  missing_items: string | null;
+  day_reason: string | null;
 }
 
 interface ParsedItem {
@@ -32,6 +34,7 @@ interface InventarioItem {
 export default function BodegaPage() {
   const router = useRouter();
   const [pending, setPending] = useState<Pedido[]>([]);
+  const [enProceso, setEnProceso] = useState<Pedido[]>([]);
   const [historial, setHistorial] = useState<Pedido[]>([]);
   const [inventario, setInventario] = useState<InventarioItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,14 +68,17 @@ export default function BodegaPage() {
 
   const fetchPedidos = useCallback(async () => {
     try {
-      const [pendRes, histRes] = await Promise.all([
+      const [pendRes, enProcesoRes, histRes] = await Promise.all([
         fetch('/api/pedidos?status=pendiente'),
+        fetch('/api/pedidos?status=en_proceso'),
         fetch('/api/pedidos'),
       ]);
       const pendData = await pendRes.json();
+      const enProcesoData = await enProcesoRes.json();
       const histData = await histRes.json();
       setPending(Array.isArray(pendData) ? pendData : []);
-      setHistorial(Array.isArray(histData) ? histData.filter((p: Pedido) => p.status !== 'pendiente') : []);
+      setEnProceso(Array.isArray(enProcesoData) ? enProcesoData : []);
+      setHistorial(Array.isArray(histData) ? histData.filter((p: Pedido) => p.status !== 'pendiente' && p.status !== 'en_proceso') : []);
     } catch {
       // silent fail on refresh
     } finally {

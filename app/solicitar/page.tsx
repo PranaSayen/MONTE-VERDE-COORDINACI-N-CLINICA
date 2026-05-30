@@ -36,6 +36,7 @@ export default function SolicitarPage() {
     Object.fromEntries(INSUMOS.map((i) => [i.id, 0]))
   );
   const [reason, setReason] = useState('');
+  const [dayReason, setDayReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [error, setError] = useState('');
@@ -86,8 +87,8 @@ export default function SolicitarPage() {
     e.preventDefault();
     setError('');
 
-    if (!isMonday) {
-      setError('Solo se pueden hacer pedidos los lunes.');
+    if (!isMonday && !dayReason.trim()) {
+      setError('Debes indicar el motivo para solicitar fuera del lunes.');
       return;
     }
 
@@ -118,6 +119,7 @@ export default function SolicitarPage() {
           staff_name: session?.name,
           items,
           reason: reason.trim() || null,
+          day_reason: isMonday ? null : dayReason.trim() || null,
         }),
       });
 
@@ -131,6 +133,7 @@ export default function SolicitarPage() {
       setSuccessMsg('¡Pedido enviado correctamente! Bodega lo revisará pronto.');
       setQuantities(Object.fromEntries(INSUMOS.map((i) => [i.id, 0])));
       setReason('');
+      setDayReason('');
       setWeekCount((c) => c + 1);
     } catch {
       setError('Error de conexión. Intenta de nuevo.');
@@ -152,37 +155,6 @@ export default function SolicitarPage() {
     );
   }
 
-  if (!isMonday) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-8 text-center">
-          <div className="text-6xl mb-4">📅</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-3">Solo los Lunes</h2>
-          <p className="text-gray-600 mb-2">
-            Los pedidos de insumos solo se pueden realizar los <strong>lunes</strong>.
-          </p>
-          <p className="text-gray-500 text-sm mb-6">
-            Hoy es <strong>{todayName}</strong>. Vuelve el próximo lunes.
-          </p>
-          <div className="space-y-3">
-            <Link
-              href="/estado"
-              className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl py-3 min-h-12 text-center transition-colors"
-            >
-              Ver mis pedidos
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="w-full border border-gray-300 text-gray-600 hover:bg-gray-50 font-semibold rounded-xl py-3 min-h-12 transition-colors"
-            >
-              Cerrar sesión
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen p-4">
       {/* Header */}
@@ -190,7 +162,7 @@ export default function SolicitarPage() {
         <div className="bg-emerald-600 rounded-2xl p-4 text-white flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">Clínica Monte Verde</h1>
-            <p className="text-emerald-100 text-sm">Hola, {session?.name}</p>
+            <p className="text-emerald-100 text-sm">Hola, {session?.name} — {todayName}</p>
           </div>
           <div className="flex gap-2">
             <Link
@@ -211,9 +183,18 @@ export default function SolicitarPage() {
 
       <div className="max-w-2xl mx-auto">
         <h2 className="text-2xl font-bold text-emerald-800 mb-2">Solicitar Insumos</h2>
-        <p className="text-gray-500 text-sm mb-6">
+        <p className="text-gray-500 text-sm mb-4">
           Selecciona los insumos que necesitas y las cantidades.
         </p>
+
+        {/* Non-Monday warning */}
+        {!isMonday && (
+          <div className="bg-yellow-50 border border-yellow-400 rounded-2xl p-4 mb-4">
+            <p className="text-yellow-800 font-semibold text-sm">
+              ⚠️ Estás haciendo un pedido fuera del lunes. Debes indicar el motivo.
+            </p>
+          </div>
+        )}
 
         {weekCount >= 1 && (
           <div className="bg-yellow-50 border border-yellow-300 rounded-2xl p-4 mb-6">
@@ -291,6 +272,24 @@ export default function SolicitarPage() {
             })}
           </div>
 
+          {/* Day reason field (mandatory if not Monday) */}
+          {!isMonday && (
+            <div className="bg-white rounded-2xl shadow-md p-4 mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2" htmlFor="day_reason">
+                Razón para solicitar fuera del lunes <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="day_reason"
+                value={dayReason}
+                onChange={(e) => setDayReason(e.target.value)}
+                rows={3}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+                placeholder="Explica por qué necesitas hacer el pedido hoy..."
+                required
+              />
+            </div>
+          )}
+
           {/* Reason field (mandatory on second request) */}
           {weekCount >= 1 && (
             <div className="bg-white rounded-2xl shadow-md p-4 mb-6">
@@ -309,8 +308,8 @@ export default function SolicitarPage() {
             </div>
           )}
 
-          {/* Optional reason for first request */}
-          {weekCount === 0 && (
+          {/* Optional reason for first request on Monday */}
+          {weekCount === 0 && isMonday && (
             <div className="bg-white rounded-2xl shadow-md p-4 mb-6">
               <label className="block text-sm font-semibold text-gray-700 mb-2" htmlFor="reason">
                 Razón o comentario (opcional)

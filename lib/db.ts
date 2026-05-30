@@ -29,6 +29,9 @@ export async function initDb() {
     )
   `;
 
+  await sql`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS missing_items TEXT`;
+  await sql`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS day_reason TEXT`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS inventario (
       id INTEGER PRIMARY KEY,

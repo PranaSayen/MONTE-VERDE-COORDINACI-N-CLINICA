@@ -18,6 +18,13 @@ export async function GET(req: NextRequest) {
     return Response.json(rows);
   }
 
+  if (status === 'en_proceso') {
+    const rows = await sql`
+      SELECT * FROM pedidos WHERE status = 'en_proceso' ORDER BY created_at ASC
+    `;
+    return Response.json(rows);
+  }
+
   if (staffName && currentWeek === '1') {
     const { week, year } = getISOWeek(new Date());
     const rows = await sql`
@@ -46,7 +53,7 @@ export async function POST(req: NextRequest) {
   await initDb();
   const sql = getSql();
   const body = await req.json();
-  const { staff_name, items, reason } = body;
+  const { staff_name, items, reason, day_reason } = body;
 
   if (!staff_name || !items || !Array.isArray(items)) {
     return Response.json({ error: 'Datos inválidos' }, { status: 400 });
@@ -58,8 +65,13 @@ export async function POST(req: NextRequest) {
   }
 
   const today = new Date();
-  if (today.getDay() !== 1) {
-    return Response.json({ error: 'Los pedidos solo se pueden hacer los lunes.' }, { status: 400 });
+  const isMonday = today.getDay() === 1;
+
+  if (!isMonday && !day_reason?.trim()) {
+    return Response.json(
+      { error: 'Debes indicar el motivo para solicitar fuera del lunes.' },
+      { status: 400 }
+    );
   }
 
   const { week, year } = getISOWeek(today);
@@ -78,10 +90,11 @@ export async function POST(req: NextRequest) {
 
   const itemsJson = JSON.stringify(items);
   const reasonVal = reason?.trim() || null;
+  const dayReasonVal = isMonday ? null : (day_reason?.trim() || null);
 
   const rows = await sql`
-    INSERT INTO pedidos (staff_name, items, reason, week_number, year)
-    VALUES (${staff_name}, ${itemsJson}, ${reasonVal}, ${week}, ${year})
+    INSERT INTO pedidos (staff_name, items, reason, day_reason, week_number, year)
+    VALUES (${staff_name}, ${itemsJson}, ${reasonVal}, ${dayReasonVal}, ${week}, ${year})
     RETURNING *
   `;
 
