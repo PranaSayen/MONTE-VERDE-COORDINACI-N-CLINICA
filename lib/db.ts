@@ -1,5 +1,5 @@
 import { neon, NeonQueryFunction } from '@neondatabase/serverless';
-import { INSUMOS } from '@/lib/constants';
+import { PRODUCTOS_SEED } from '@/lib/constants';
 
 let _sql: NeonQueryFunction<false, false> | null = null;
 
@@ -34,21 +34,36 @@ export async function initDb() {
 
   await sql`
     CREATE TABLE IF NOT EXISTS inventario (
-      id INTEGER PRIMARY KEY,
+      id SERIAL PRIMARY KEY,
+      id_interno TEXT NOT NULL UNIQUE,
+      categoria TEXT NOT NULL,
       nombre TEXT NOT NULL,
-      unidad TEXT NOT NULL,
-      stock INTEGER NOT NULL DEFAULT 0
+      descripcion TEXT,
+      marca TEXT,
+      presentacion TEXT,
+      unidad TEXT NOT NULL DEFAULT 'unidad',
+      stock INTEGER NOT NULL DEFAULT 0,
+      ubicacion TEXT DEFAULT 'Bodega'
     )
   `;
 
   const count = await sql`SELECT COUNT(*) as count FROM inventario`;
   if (Number(count[0].count) === 0) {
-    for (let i = 0; i < INSUMOS.length; i++) {
-      const insumo = INSUMOS[i];
+    for (const producto of PRODUCTOS_SEED) {
       await sql`
-        INSERT INTO inventario (id, nombre, unidad, stock)
-        VALUES (${i + 1}, ${insumo.name}, ${insumo.unit}, 20)
-        ON CONFLICT (id) DO NOTHING
+        INSERT INTO inventario (id_interno, categoria, nombre, descripcion, marca, presentacion, unidad, stock, ubicacion)
+        VALUES (
+          ${producto.id_interno},
+          ${producto.categoria},
+          ${producto.nombre},
+          ${producto.descripcion},
+          ${producto.marca},
+          ${producto.presentacion},
+          ${producto.unidad},
+          ${producto.stock},
+          ${producto.ubicacion}
+        )
+        ON CONFLICT (id_interno) DO NOTHING
       `;
     }
   }

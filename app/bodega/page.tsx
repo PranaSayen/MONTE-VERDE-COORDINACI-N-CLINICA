@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { CATEGORIAS } from '@/lib/constants';
 
 interface Pedido {
   id: number;
@@ -18,17 +19,26 @@ interface Pedido {
 }
 
 interface ParsedItem {
-  id: string;
-  name: string;
-  unit: string;
+  id?: string;
+  id_interno?: string;
+  name?: string;
+  nombre?: string;
+  unit?: string;
+  unidad?: string;
   qty: number;
 }
 
 interface InventarioItem {
   id: number;
+  id_interno: string;
+  categoria: string;
   nombre: string;
+  descripcion: string;
+  marca: string;
+  presentacion: string;
   unidad: string;
   stock: number;
+  ubicacion: string;
 }
 
 export default function BodegaPage() {
@@ -44,6 +54,8 @@ export default function BodegaPage() {
   const [processing, setProcessing] = useState<number | null>(null);
   const [stockInputs, setStockInputs] = useState<Record<number, string>>({});
   const [stockUpdating, setStockUpdating] = useState<number | null>(null);
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string>('Todos');
+  const [busqueda, setBusqueda] = useState('');
 
   const fetchInventario = useCallback(async () => {
     try {
@@ -191,6 +203,10 @@ export default function BodegaPage() {
     }
   };
 
+  const getItemName = (item: ParsedItem) => item.nombre ?? item.name ?? '';
+  const getItemUnit = (item: ParsedItem) => item.unidad ?? item.unit ?? '';
+  const getItemKey = (item: ParsedItem, idx: number) => item.id_interno ?? item.id ?? String(idx);
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('es-CL', {
       day: '2-digit',
@@ -202,6 +218,23 @@ export default function BodegaPage() {
   };
 
   const outOfStock = inventario.filter((i) => i.stock === 0);
+
+  const inventarioFiltrado = useMemo(() => {
+    let lista = inventario;
+    if (categoriaFiltro !== 'Todos') {
+      lista = lista.filter((i) => i.categoria === categoriaFiltro);
+    }
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      lista = lista.filter(
+        (i) =>
+          i.nombre.toLowerCase().includes(q) ||
+          i.id_interno.toLowerCase().includes(q) ||
+          i.descripcion.toLowerCase().includes(q)
+      );
+    }
+    return lista;
+  }, [inventario, categoriaFiltro, busqueda]);
 
   if (loading) {
     return (
@@ -241,6 +274,7 @@ export default function BodegaPage() {
               {outOfStock.map((item) => (
                 <li key={item.id} className="text-red-700 text-sm flex items-center gap-2">
                   <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
+                  <span className="font-mono text-xs text-red-500">{item.id_interno}</span>
                   {item.nombre}
                 </li>
               ))}
@@ -277,14 +311,13 @@ export default function BodegaPage() {
                       </span>
                     </div>
 
-                    {/* Items list */}
                     <ul className="space-y-1 mb-3">
-                      {items.map((item) => (
-                        <li key={item.id} className="flex items-center gap-2 text-sm text-gray-700">
+                      {items.map((item, idx) => (
+                        <li key={getItemKey(item, idx)} className="flex items-center gap-2 text-sm text-gray-700">
                           <span className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0" />
                           <span className="font-medium">{item.qty}</span>
-                          <span>{item.unit}{item.qty > 1 ? 's' : ''}</span>
-                          <span className="text-gray-500">de {item.name}</span>
+                          <span>{getItemUnit(item)}{item.qty > 1 ? 's' : ''}</span>
+                          <span className="text-gray-500">de {getItemName(item)}</span>
                         </li>
                       ))}
                     </ul>
@@ -348,14 +381,13 @@ export default function BodegaPage() {
                     </span>
                   </div>
 
-                  {/* Items list */}
                   <ul className="space-y-1 mb-3">
-                    {items.map((item) => (
-                      <li key={item.id} className="flex items-center gap-2 text-sm text-gray-700">
+                    {items.map((item, idx) => (
+                      <li key={getItemKey(item, idx)} className="flex items-center gap-2 text-sm text-gray-700">
                         <span className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0" />
                         <span className="font-medium">{item.qty}</span>
-                        <span>{item.unit}{item.qty > 1 ? 's' : ''}</span>
-                        <span className="text-gray-500">de {item.name}</span>
+                        <span>{getItemUnit(item)}{item.qty > 1 ? 's' : ''}</span>
+                        <span className="text-gray-500">de {getItemName(item)}</span>
                       </li>
                     ))}
                   </ul>
@@ -373,7 +405,6 @@ export default function BodegaPage() {
                     </p>
                   )}
 
-                  {/* Action buttons */}
                   {!isRejecting && (
                     <div className="flex gap-3">
                       <button
@@ -397,7 +428,6 @@ export default function BodegaPage() {
                     </div>
                   )}
 
-                  {/* Rejection form */}
                   {isRejecting && (
                     <div className="mt-3 space-y-3">
                       <div>
@@ -476,12 +506,12 @@ export default function BodegaPage() {
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {items.map((item) => (
+                    {items.map((item, idx) => (
                       <span
-                        key={item.id}
+                        key={getItemKey(item, idx)}
                         className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-lg"
                       >
-                        {item.qty} {item.unit} {item.name}
+                        {item.qty} {getItemUnit(item)} {getItemName(item)}
                       </span>
                     ))}
                   </div>
@@ -499,50 +529,94 @@ export default function BodegaPage() {
 
         {/* Gestionar Stock */}
         <h2 className="text-xl font-bold text-emerald-800 mb-4">Gestionar Stock</h2>
+
         {inventario.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-md p-6 text-center text-gray-500">
             Cargando inventario...
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-            {inventario.map((item) => {
-              const isZero = item.stock === 0;
-              return (
-                <div
-                  key={item.id}
-                  className={`rounded-2xl shadow-md p-4 flex flex-col gap-3 ${
-                    isZero ? 'bg-red-50' : 'bg-emerald-50'
+          <>
+            {/* Search */}
+            <input
+              type="text"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por ID, nombre o descripción..."
+              className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+
+            {/* Category filter tabs */}
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
+              {['Todos', ...CATEGORIAS].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setCategoriaFiltro(cat)}
+                  className={`flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap ${
+                    categoriaFiltro === cat
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-emerald-400'
                   }`}
                 >
-                  <div>
-                    <p className="font-semibold text-gray-800 text-sm leading-tight">{item.nombre}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Unidad: {item.unidad}</p>
-                    <p className={`text-sm font-bold mt-1 ${isZero ? 'text-red-600' : 'text-emerald-700'}`}>
-                      Stock actual: {item.stock}
-                    </p>
+                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-400 mb-3">
+              Mostrando {inventarioFiltrado.length} de {inventario.length} productos
+            </p>
+
+            <div className="space-y-2 mb-10">
+              {inventarioFiltrado.map((item) => {
+                const isZero = item.stock === 0;
+                const isLow = item.stock > 0 && item.stock <= 5;
+                let rowBg = 'bg-white border-gray-200';
+                let stockColor = 'text-emerald-700';
+                if (isZero) { rowBg = 'bg-red-50 border-red-200'; stockColor = 'text-red-600'; }
+                else if (isLow) { rowBg = 'bg-yellow-50 border-yellow-200'; stockColor = 'text-yellow-700'; }
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`rounded-2xl border p-4 flex items-center gap-3 ${rowBg}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs text-gray-400">{item.id_interno}</span>
+                        <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{item.categoria}</span>
+                      </div>
+                      <p className="font-semibold text-gray-800 text-sm leading-tight mt-0.5">{item.nombre}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{item.descripcion}</p>
+                      <p className={`text-xs font-bold mt-1 ${stockColor}`}>
+                        Stock: {item.stock} {item.unidad}
+                        {isZero && ' — SIN STOCK'}
+                        {isLow && ' — BAJO'}
+                      </p>
+                      <p className="text-xs text-gray-400">{item.ubicacion}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <input
+                        type="number"
+                        min={0}
+                        value={stockInputs[item.id] ?? String(item.stock)}
+                        onChange={(e) =>
+                          setStockInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                        className="w-16 border border-gray-300 rounded-xl text-center py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <button
+                        onClick={() => handleStockUpdate(item)}
+                        disabled={stockUpdating === item.id}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white text-xs font-semibold px-3 py-2 rounded-xl transition-colors whitespace-nowrap"
+                      >
+                        {stockUpdating === item.id ? '...' : 'Actualizar'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      value={stockInputs[item.id] ?? String(item.stock)}
-                      onChange={(e) =>
-                        setStockInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
-                      }
-                      className="flex-1 border border-gray-300 rounded-xl text-center py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <button
-                      onClick={() => handleStockUpdate(item)}
-                      disabled={stockUpdating === item.id}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white text-sm font-semibold px-3 py-2 rounded-xl transition-colors whitespace-nowrap"
-                    >
-                      {stockUpdating === item.id ? '...' : 'Actualizar'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>
