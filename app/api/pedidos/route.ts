@@ -1,10 +1,11 @@
 export const runtime = 'nodejs';
 
 import { NextRequest } from 'next/server';
-import { sql, initDb, getISOWeek } from '@/lib/db';
+import { getSql, initDb, getISOWeek } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   await initDb();
+  const sql = getSql();
   const { searchParams } = new URL(req.url);
   const staffName = searchParams.get('staff_name');
   const status = searchParams.get('status');
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   await initDb();
+  const sql = getSql();
   const body = await req.json();
   const { staff_name, items, reason } = body;
 

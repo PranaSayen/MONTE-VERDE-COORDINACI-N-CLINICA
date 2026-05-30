@@ -1,13 +1,14 @@
 export const runtime = 'nodejs';
 
 import { NextRequest } from 'next/server';
-import { sql, initDb } from '@/lib/db';
+import { getSql, initDb } from '@/lib/db';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   await initDb();
+  const sql = getSql();
   const body = await req.json();
   const { status, observation } = body;
 
